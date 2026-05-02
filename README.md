@@ -5,98 +5,145 @@
 ![Claude Agent Skill](https://img.shields.io/badge/Claude-Agent%20Skill-blueviolet)
 ![Status](https://img.shields.io/badge/status-active-success)
 
-> A Claude Agent Skill that turns a single natural-language prompt into a fully formatted, print-ready English tutoring document — in seconds.
+> A context-aware Claude Agent Skill that reads a student's lesson history, identifies weak points and teacher annotations, then generates a personalized, curriculum-aligned tutoring document — automatically.
 >
-> 一句话触发，自动生成排版精良、即刻可打印的高中英语备课文档。
+> 能读取历史备课文档与学生错题记录，结合下一单元课本内容，自动生成针对性备课文档的 Claude Agent Skill。
 
 ---
 
-## Overview · 项目简介
+## The Core Idea · 核心理念
 
-**english-tutor-lesson-prep** is an AI-native automation tool built on top of [Claude Code](https://docs.claude.com)'s Agent Skill system. It eliminates the manual work of lesson preparation for Chinese high school English tutoring: given a student name and unit number, it reads structured vocabulary data, composes original content, and renders a polished 7-section `.docx` file — complete with color-coded tables, model paragraphs, and grammar comparison layouts.
+Most AI document tools generate content from scratch every time. This skill does something different: **it reads what already happened before it writes what comes next.**
 
-The entire pipeline runs from a single sentence typed in natural language.
+大多数 AI 文档工具每次都从零生成内容。这个 Skill 做的事情不同：**它先读懂发生过什么，再决定下一步写什么。**
 
-**english-tutor-lesson-prep** 是基于 [Claude Code](https://docs.claude.com) Agent Skill 系统构建的 AI 原生自动化工具，专为中国高中英语家教设计。只需输入学生姓名和单元编号，系统即可自动读取词汇 CSV、生成原创内容，并输出一份格式规范的七节课 `.docx` 文档——包含配色表格、范文段落和语法对比版块，全程无需人工干预。
+Before generating a single word of lesson content, the skill ingests three sources of context:
+
+在生成任何内容之前，Skill 会先读取三类上下文：
+
+| Input · 输入 | Source · 来源 | Purpose · 作用 |
+|-------------|--------------|---------------|
+| 📄 Previous lesson docs | Past `.docx` files or session notes | Extract dictation errors, starred items, teacher annotations · 提取默写错误、重点标记、教师批注 |
+| 📚 Textbook content | Next unit's word list and theme | Align new content to curriculum · 对齐课程进度 |
+| 📊 Vocabulary CSV | Student's full word database | Filter unit-specific vocab with proficiency context · 结合掌握情况筛选词汇 |
+
+The output is not a generic lesson plan. It is a document **built around what this specific student struggled with last time, calibrated to what they need to learn next.**
+
+输出的不是通用备课文档，而是**围绕这位学生上次的薄弱点、面向下一阶段学习目标**量身定制的内容。
 
 ---
 
-## The Problem · 要解决的问题
+## What It Reads · 读取内容
 
-Preparing a quality tutoring session by hand takes **60–90 minutes**: selecting vocabulary, writing a coherent passage, designing comparison tables, crafting writing prompts, then formatting everything in Word. This is repetitive, error-prone, and scales poorly when teaching multiple students across multiple textbook units.
+### From previous lesson documents · 从历史备课文档读取
 
-手动备一节高质量的家教课需要 **60–90 分钟**：筛词、写短文、设计对比表格、构思作文题目，最后在 Word 里逐一排版。这套流程高度重复、容易出错，一旦同时教多个学生、跨多本教材，时间成本就会急剧上升。
+- **Dictation errors (默写错误):** Words the student misspelled or blanked — automatically surfaced as review priority in the new document
+- **Starred / highlighted items (重点标记):** Phrases or grammar points the teacher flagged during the last session — carried forward into the next KP section
+- **Teacher notes (批注):** Free-form comments written during or after class — parsed to inform tone, difficulty level, and focus areas
+
+- **默写错误：** 学生上次写错或未写出的词汇——自动提升为新文档的复习优先级
+- **重点标记：** 上节课教师标注的词组或语法点——顺延进入下一份文档的知识点版块
+- **批注内容：** 课中或课后的自由备注——用于调整难度、语气和重点方向
+
+### From the next unit's textbook content · 从下一单元课本读取
+
+- Unit theme and topic keywords → used to write an **original, on-topic reading passage**
+- Core vocabulary list → cross-referenced with student's CSV to identify **new words that need introduction vs. words already seen**
+- Typical writing formats for this unit type → used to construct **targeted writing prompts with format notes**
+
+- 单元主题与关键词 → 用于撰写**贴合主题的原创阅读短文**
+- 核心词汇表 → 与学生词汇 CSV 交叉比对，区分**首次出现的生词与已见过的词汇**
+- 该单元对应的常见作文文体 → 用于构建**包含格式要点的针对性作文题目**
 
 ---
 
-## The Solution · 解决方案
+## Pipeline · 流水线
 
-**One prompt. One document. Under 30 seconds.**
+```
+┌─────────────────────────────────────────────────────────┐
+│  INPUT                                                  │
+│                                                         │
+│  [Previous .docx]  +  [Vocabulary CSV]  +  [Unit info]  │
+│   ↓ errors, stars      ↓ word list          ↓ theme     │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                    ┌───────▼────────┐
+                    │  Claude reads  │  ← SKILL.md defines
+                    │  & synthesizes │    all reading rules
+                    └───────┬────────┘
+                            │
+          ┌─────────────────▼──────────────────┐
+          │  Content composition               │
+          │                                    │
+          │  • Review words = last errors +    │
+          │    previously starred items        │
+          │  • New passage uses unit theme     │
+          │  • KP tables target flagged gaps   │
+          │  • Writing prompts match unit type │
+          └─────────────────┬──────────────────┘
+                            │
+                    ┌───────▼────────┐
+                    │ generate_      │  ← Node.js / docx
+                    │ lesson.js      │    config-driven
+                    └───────┬────────┘
+                            │
+                    ┌───────▼────────┐
+                    │  OUTPUT        │
+                    │  .docx ready   │
+                    │  to print      │
+                    └────────────────┘
+```
 
-**一句话。一份文档。30 秒以内。**
-
+**Trigger example · 触发示例:**
 ```
 明天给王腾昊上课，默写必修3第三单元
-```
-
-Claude executes a three-stage pipeline automatically:
-
-系统自动执行三阶段流水线：
-
-```
-① Parse   →  读取学生词汇 CSV，过滤当前单元与上一单元词汇
-② Compose →  生成原创短文、阅读理解题、知识点表格、作文题目
-③ Render  →  将内容注入 generate_lesson.js，输出格式化 .docx
 ```
 
 ---
 
 ## Output Structure · 文档结构
 
-The generated document follows a fixed pedagogical structure validated across real tutoring sessions:
-
-生成文档遵循经过实际课堂验证的固定教学结构：
-
-| # | Section · 版块 | Description · 说明 |
-|---|---------------|-------------------|
-| 1 | 复习默写 | Previous unit · 10 curated words with phonetics · 上节课核心词，含音标 |
-| 2 | 新课默写 | Current unit · 15 words with phonetics · 本节课新词，含音标 |
-| 3 | 核心词组 | 8–9 key phrases with bilingual example sentences · 双语例句 |
-| 4 | 阅读理解 | Original thematic passage + 3 leveled comprehension questions · 原创短文 + 三道梯度阅读题 |
-| 5 | 知识点精讲 | 3–4 grammar / vocabulary comparison tables · 语法与词汇对比表 |
-| 6 | 作文讲解 | 2 writing directions with format notes and model paragraphs · 含格式要点与范文首段 |
-| 7 | 课后作业 + 下节课预告 | Homework checklist + next-unit vocabulary preview · 作业清单 + 预习词表 |
+| # | Section · 版块 | Personalization · 个性化逻辑 |
+|---|---------------|----------------------------|
+| 1 | 复习默写 | Prioritizes words the student got wrong last session · 优先包含上次错词 |
+| 2 | 新课默写 | 15 new words, cross-checked against student's prior exposure · 与历史词汇交叉去重 |
+| 3 | 核心词组 | Carries forward any starred phrases from previous doc · 顺延上次标注词组 |
+| 4 | 阅读理解 | Original passage themed to the next unit · 原创短文对齐下一单元主题 |
+| 5 | 知识点精讲 | Grammar tables targeting flagged weak areas · 针对标记薄弱点设计对比表 |
+| 6 | 作文讲解 | Format and prompts matched to this unit's exam writing type · 文体与考纲对齐 |
+| 7 | 课后作业 + 下节课预告 | Preview words seeded from the unit after next · 基于后续单元提前播种词汇 |
 
 ---
 
 ## Technical Design · 技术设计
 
-### Agent Skill Architecture · Agent Skill 架构
+### Context extraction · 上下文提取
 
-The skill is defined entirely in `SKILL.md` — a structured prompt document that Claude reads before execution. It specifies the data schema, filtering logic, content composition rules, and the exact config shape expected by the rendering script. This design separates **intelligence** (Claude) from **rendering** (Node.js), keeping each layer independently testable and replaceable.
+The skill reads previous lesson `.docx` files directly — parsing table contents, identifying annotated rows, and extracting free-text teacher notes. No separate tagging system or database is required; the documents themselves are the source of truth.
 
-技能定义完全封装在 `SKILL.md` 中——这是 Claude 在执行前读取的结构化提示文档，规定了数据格式、筛词逻辑、内容生成规则以及渲染脚本所需的 config 结构。这种设计将**智能层**（Claude）与**渲染层**（Node.js）彻底分离，两层均可独立测试和替换。
+Skill 直接读取历史课件 `.docx` 文件——解析表格内容、识别标注行、提取自由文本批注。无需独立的标签系统或数据库，文档本身即为数据来源。
 
-### Document Rendering Engine · 文档渲染引擎
+### Skill definition · Skill 定义
 
-`scripts/generate_lesson.js` is a config-driven document builder powered by [`docx`](https://www.npmjs.com/package/docx) (Node.js). It handles:
+All pipeline logic is encoded in `SKILL.md`: data schemas, reading rules, content composition constraints, and the config shape expected by the renderer. This means the pipeline is fully auditable, version-controlled, and adjustable without touching any code.
 
-`scripts/generate_lesson.js` 是基于 [`docx`](https://www.npmjs.com/package/docx)（Node.js）的配置驱动文档构建器，负责处理：
+全部流水线逻辑均编码在 `SKILL.md` 中：数据格式、读取规则、内容生成约束、渲染器所需的 config 结构。这意味着整个流水线完全可审计、可版本控制，调整规则无需改动任何代码。
 
-- Pixel-precise table layouts with per-cell shading and border control · 精确到像素的表格布局，支持单元格着色与边框控制
-- Per-unit color theming applied consistently across all 7 sections · 按单元主题配色，贯穿全文七个版块
-- Dynamic header / footer injection with student name, unit, and date · 动态页眉页脚注入学生姓名、单元和日期
-- Strict separation of content data and presentation logic · 内容数据与展示逻辑严格分离
+### Document renderer · 文档渲染器
 
-### Reference Knowledge Base · 参考知识库
+`scripts/generate_lesson.js` is a config-driven Word document builder using [`docx`](https://www.npmjs.com/package/docx) (Node.js). It handles table layouts, per-unit color theming, header/footer injection, and shading — keeping all presentation logic entirely separate from content.
 
-The `references/` folder acts as a structured knowledge base that grounds Claude's content generation:
+`scripts/generate_lesson.js` 是基于 [`docx`](https://www.npmjs.com/package/docx)（Node.js）的配置驱动文档构建器，负责处理表格布局、单元主题配色、页眉页脚注入与单元格着色——将所有展示逻辑与内容完全分离。
 
-`references/` 目录作为结构化知识库，为 Claude 的内容生成提供约束依据：
+### Reference knowledge base · 参考知识库
 
-- **`unit-themes.md`** — Maps every unit in 必修1–3 to a topic, theme keywords, passage setting, writing directions, and suggested KP patterns · 将必修1–3每个单元映射到主题、关键词、短文场景、作文方向和建议知识点
-- **`color-map.md`** — Defines per-unit color palettes so every document has a visually distinct, consistent identity · 定义每单元专属配色方案，确保文档视觉风格统一且易于区分
-- **`kp-table-patterns.md`** — Provides five reusable table templates (word form contrast, confusable pairs, verb phrase triads, fixed collocations, grammar contrast) with exact column specs · 提供五种可复用的知识点表格模板，包含精确列宽规格
+The `references/` folder grounds Claude's generation with structured, unit-specific knowledge:
+
+`references/` 目录为 Claude 的生成提供结构化约束：
+
+- **`unit-themes.md`** — Unit-to-topic mappings, passage settings, writing directions, and KP suggestions for 必修1–3 · 必修1–3各单元主题映射、短文场景、作文方向与知识点建议
+- **`color-map.md`** — Per-unit color palettes for consistent visual identity · 各单元专属配色，保证视觉风格一致
+- **`kp-table-patterns.md`** — Five reusable table templates with exact column specs · 五种可复用知识点表格模板，含精确列宽规格
 
 ---
 
@@ -104,13 +151,13 @@ The `references/` folder acts as a structured knowledge base that grounds Claude
 
 ```
 english-tutor-lesson-prep/
-├── SKILL.md                      # Agent skill definition & full pipeline spec
-│                                 # Agent Skill 定义与完整流水线规格
+├── SKILL.md                      # Agent skill definition, pipeline logic, reading rules
+│                                 # Skill 定义、流水线逻辑、读取规则
 ├── scripts/
 │   └── generate_lesson.js        # Config-driven docx rendering engine
 │                                 # 配置驱动的文档渲染引擎
 └── references/
-    ├── unit-themes.md             # Unit → topic / passage / writing map (必修1–3)
+    ├── unit-themes.md             # Unit → theme / passage / writing map (必修1–3)
     ├── color-map.md               # Per-unit color palette definitions
     └── kp-table-patterns.md       # Reusable knowledge point table templates
 ```
@@ -128,17 +175,19 @@ english-tutor-lesson-prep/
 git clone https://github.com/jiakezhu/english-tutor-lesson-prep.git ~/.claude/skills/english-tutor-lesson-prep
 ```
 
-**Configure your data path · 配置数据路径**
+**Configure paths · 配置路径**
 
-Edit the CSV path in `SKILL.md` to point to your vocabulary file:
+Edit `SKILL.md` to point to your vocabulary CSV and lesson history folder:
 
-修改 `SKILL.md` 中的 CSV 路径，指向你的词汇文件：
+修改 `SKILL.md` 中的路径，指向词汇文件与历史课件目录：
 
 ```
-CSV: /Users/YOUR_USERNAME/Desktop/英语家教/课件/txt缓存/课本/STUDENT_单词表.csv
+CSV:     /Users/YOUR_USERNAME/Desktop/英语家教/课件/txt缓存/课本/STUDENT_单词表.csv
+Lessons: /Users/YOUR_USERNAME/Desktop/英语家教/课件/txt缓存/课件/STUDENT/
+Output:  /path/to/output/folder/
 ```
 
-**Run the renderer manually · 手动运行渲染器**
+**Run manually · 手动运行**
 ```bash
 node scripts/generate_lesson.js --config /tmp/lesson_config.json --output ./output.docx
 ```
@@ -147,20 +196,20 @@ node scripts/generate_lesson.js --config /tmp/lesson_config.json --output ./outp
 
 ## Design Principles · 设计原则
 
-**Composability · 可组合性**
-Each component — skill definition, content generation, document rendering, reference knowledge — is a separate, replaceable module. Adding a new student, a new textbook series, or a different output format requires changing only one file.
+**Continuity over novelty · 连续性优于新颖性**
+Each lesson document is a direct response to the previous one. The system is designed to accumulate pedagogical context over time, not reset it.
 
-每个组件——Skill 定义、内容生成、文档渲染、参考知识库——都是独立可替换的模块。新增学生、新增教材系列或更换输出格式，只需修改对应的单一文件。
+每份备课文档都是对上一份的直接回应。系统设计为随时间积累教学上下文，而非每次重置。
 
 **Grounded generation · 有据可查的生成**
-Claude's content output is constrained by explicit reference documents, not left to open-ended generation. This reduces hallucination and keeps pedagogical quality consistent across sessions.
+Claude's output is constrained by explicit reference documents and real student data — not open-ended generation. This keeps content accurate, curriculum-aligned, and pedagogically consistent across sessions.
 
-Claude 的内容输出受显式参考文档约束，而非开放式生成。这降低了幻觉风险，确保每节课的教学质量保持一致。
+Claude 的输出受显式参考文档和真实学生数据约束，而非开放式生成。这保证内容准确、符合课程进度，并在课次间保持教学连贯性。
 
-**Zero-friction operation · 零摩擦操作**
-The intended user is a non-technical tutor. The only required input is a natural-language sentence. All file I/O, content decisions, and document formatting happen automatically in the background.
+**Separation of concerns · 关注点分离**
+Intelligence (Claude + SKILL.md) and rendering (Node.js + generate_lesson.js) are fully decoupled. Swapping the output format, the AI model, or the reference corpus requires changing only one layer.
 
-设计面向非技术用户。操作者只需输入一句自然语言，所有文件读写、内容决策和文档排版均在后台自动完成。
+智能层（Claude + SKILL.md）与渲染层（Node.js + generate_lesson.js）完全解耦。更换输出格式、AI 模型或参考知识库，只需修改对应的单一层。
 
 ---
 
